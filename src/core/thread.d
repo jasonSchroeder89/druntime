@@ -47,8 +47,17 @@ version (Solaris)
     import core.sys.posix.sys.wait : idtype_t;
 }
 
-// this should be true for most architectures
-version = StackGrowsDown;
+version (GNU)
+{
+    import gcc.builtins;
+    version (GNU_StackGrowsDown)
+        version = StackGrowsDown;
+}
+else
+{
+    // this should be true for most architectures
+    version = StackGrowsDown;
+}
 
 /**
  * Returns the process ID of the calling process, which is guaranteed to be
@@ -288,11 +297,6 @@ else version (Posix)
         {
             import core.sys.darwin.mach.thread_act;
             import core.sys.darwin.pthread : pthread_mach_thread_np;
-        }
-
-        version (GNU)
-        {
-            import gcc.builtins;
         }
 
         //
@@ -1191,8 +1195,8 @@ class Thread
             }
             else
             {
-                // NOTE: pthread_setschedprio is not implemented on Darwin, FreeBSD or DragonFlyBSD, so use
-                //       the more complicated get/set sequence below.
+                // NOTE: pthread_setschedprio is not implemented on Darwin, FreeBSD, OpenBSD,
+                //       or DragonFlyBSD, so use the more complicated get/set sequence below.
                 int         policy;
                 sched_param param;
 
@@ -3021,7 +3025,7 @@ extern (C) void thread_scanAll( scope ScanAllThreadsFn scan ) nothrow
  * holding the lock already got suspended.
  *
  * The term and concept of a 'critical region' comes from
- * $(LINK2 https://github.com/mono/mono/blob/521f4a198e442573c400835ef19bbb36b60b0ebb/mono/metadata/sgen-gc.h#L925 Mono's SGen garbage collector).
+ * $(LINK2 https://github.com/mono/mono/blob/521f4a198e442573c400835ef19bbb36b60b0ebb/mono/metadata/sgen-gc.h#L925, Mono's SGen garbage collector).
  *
  * In:
  *  The calling thread must be attached to the runtime.
@@ -3229,6 +3233,7 @@ extern (C) @nogc nothrow
     version (CRuntime_Glibc) int pthread_getattr_np(pthread_t thread, pthread_attr_t* attr);
     version (FreeBSD) int pthread_attr_get_np(pthread_t thread, pthread_attr_t* attr);
     version (NetBSD) int pthread_attr_get_np(pthread_t thread, pthread_attr_t* attr);
+    version (OpenBSD) int pthread_stackseg_np(pthread_t thread, stack_t* sinfo);
     version (DragonFlyBSD) int pthread_attr_get_np(pthread_t thread, pthread_attr_t* attr);
     version (Solaris) int thr_stksegment(stack_t* stk);
     version (CRuntime_Bionic) int pthread_getattr_np(pthread_t thid, pthread_attr_t* attr);
@@ -3308,6 +3313,13 @@ private void* getStackBottom() nothrow @nogc
         version (StackGrowsDown)
             addr += size;
         return addr;
+    }
+    else version (OpenBSD)
+    {
+        stack_t stk;
+
+        pthread_stackseg_np(pthread_self(), &stk);
+        return stk.ss_sp;
     }
     else version (DragonFlyBSD)
     {
@@ -3580,8 +3592,7 @@ private
         else version (Posix)
             version = AsmX86_Posix;
 
-        version (Darwin)
-            version = AlignFiberStackTo16Byte;
+        version = AlignFiberStackTo16Byte;
     }
     else version (D_InlineAsm_X86_64)
     {
@@ -4562,6 +4573,7 @@ private:
             version (Posix) import core.sys.posix.sys.mman; // mmap
             version (FreeBSD) import core.sys.freebsd.sys.mman : MAP_ANON;
             version (NetBSD) import core.sys.netbsd.sys.mman : MAP_ANON;
+            version (OpenBSD) import core.sys.openbsd.sys.mman : MAP_ANON;
             version (DragonFlyBSD) import core.sys.dragonflybsd.sys.mman : MAP_ANON;
             version (CRuntime_Glibc) import core.sys.linux.sys.mman : MAP_ANON;
             version (Darwin) import core.sys.darwin.sys.mman : MAP_ANON;
